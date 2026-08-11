@@ -133,6 +133,61 @@ public class CrmController {
         crmService.deactivateProduct(productId);
     }
 
+    @GetMapping("/accounts")
+    @PreAuthorize("hasAuthority('page.b2b')")
+    public List<AccountResponse> accounts(@RequestParam(required = false) String search) {
+        return crmService.getAccounts(search);
+    }
+
+    @PostMapping("/accounts")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAuthority('feature.b2b.accounts.manage')")
+    public AccountResponse createAccount(@RequestBody AccountRequest request) {
+        return crmService.createAccount(request);
+    }
+
+    @PutMapping("/accounts/{accountId}")
+    @PreAuthorize("hasAuthority('feature.b2b.accounts.manage')")
+    public AccountResponse updateAccount(@PathVariable String accountId, @RequestBody AccountRequest request) {
+        return crmService.updateAccount(accountId, request);
+    }
+
+    @DeleteMapping("/accounts/{accountId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('feature.b2b.accounts.manage')")
+    public void deleteAccount(@PathVariable String accountId) {
+        crmService.deactivateAccount(accountId);
+    }
+
+    @GetMapping("/contacts")
+    @PreAuthorize("hasAuthority('page.b2b')")
+    public List<ContactResponse> contacts(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String accountName
+    ) {
+        return crmService.getContacts(search, accountName);
+    }
+
+    @PostMapping("/contacts")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAuthority('feature.b2b.contacts.manage')")
+    public ContactResponse createContact(@RequestBody ContactRequest request) {
+        return crmService.createContact(request);
+    }
+
+    @PutMapping("/contacts/{contactId}")
+    @PreAuthorize("hasAuthority('feature.b2b.contacts.manage')")
+    public ContactResponse updateContact(@PathVariable String contactId, @RequestBody ContactRequest request) {
+        return crmService.updateContact(contactId, request);
+    }
+
+    @DeleteMapping("/contacts/{contactId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('feature.b2b.contacts.manage')")
+    public void deleteContact(@PathVariable String contactId) {
+        crmService.deactivateContact(contactId);
+    }
+
     @PatchMapping("/deals/{dealId}/approvals")
     @PreAuthorize("hasAuthority('feature.b2b.approvals.review')")
     public DealResponse updateApproval(

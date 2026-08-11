@@ -9,6 +9,8 @@ import com.acs.crm.api.ImportDealsResponse;
 import com.acs.crm.model.Deal;
 import com.acs.crm.model.Enums;
 import com.acs.crm.model.PipelineStage;
+import com.acs.crm.repository.AccountRepository;
+import com.acs.crm.repository.ContactRepository;
 import com.acs.crm.repository.DealRepository;
 import com.acs.crm.repository.DealStageHistoryRepository;
 import com.acs.crm.repository.PipelineStageRepository;
@@ -35,6 +37,8 @@ class CrmServiceWorkbookImportTest {
     @Mock private PipelineStageTransitionRepository pipelineStageTransitionRepository;
     @Mock private DealStageHistoryRepository dealStageHistoryRepository;
     @Mock private ProductCatalogRepository productCatalogRepository;
+    @Mock private AccountRepository accountRepository;
+    @Mock private ContactRepository contactRepository;
 
     private CrmService crmService;
 
@@ -56,7 +60,9 @@ class CrmServiceWorkbookImportTest {
             pipelineStageRepository,
             pipelineStageTransitionRepository,
             dealStageHistoryRepository,
-            productCatalogRepository
+            productCatalogRepository,
+            accountRepository,
+            contactRepository
         );
     }
 

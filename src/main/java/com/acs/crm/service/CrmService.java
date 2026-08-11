@@ -1,7 +1,11 @@
 package com.acs.crm.service;
 
+import com.acs.crm.api.AccountRequest;
+import com.acs.crm.api.AccountResponse;
 import com.acs.crm.api.ActivityItem;
 import com.acs.crm.api.AllowedStageTransitionResponse;
+import com.acs.crm.api.ContactRequest;
+import com.acs.crm.api.ContactResponse;
 import com.acs.crm.api.CreateDealRequest;
 import com.acs.crm.api.DashboardSummary;
 import com.acs.crm.api.DealResponse;
@@ -15,7 +19,9 @@ import com.acs.crm.api.ProductCatalogRequest;
 import com.acs.crm.api.ProductCatalogSummaryResponse;
 import com.acs.crm.api.StageMoveRequest;
 import com.acs.crm.api.UpdateDealRequest;
+import com.acs.crm.model.Account;
 import com.acs.crm.model.ApprovalStep;
+import com.acs.crm.model.Contact;
 import com.acs.crm.model.Deal;
 import com.acs.crm.model.DealStageHistory;
 import com.acs.crm.model.Enums;
@@ -25,6 +31,8 @@ import com.acs.crm.model.PipelineStageTransition;
 import com.acs.crm.model.ProductCatalogItem;
 import com.acs.crm.model.TrendPoint;
 import com.acs.crm.model.WarrantyItem;
+import com.acs.crm.repository.AccountRepository;
+import com.acs.crm.repository.ContactRepository;
 import com.acs.crm.repository.DealStageHistoryRepository;
 import com.acs.crm.repository.DealRepository;
 import com.acs.crm.repository.PipelineStageRepository;
@@ -89,6 +97,8 @@ public class CrmService {
     private final PipelineStageTransitionRepository pipelineStageTransitionRepository;
     private final DealStageHistoryRepository dealStageHistoryRepository;
     private final ProductCatalogRepository productCatalogRepository;
+    private final AccountRepository accountRepository;
+    private final ContactRepository contactRepository;
     private final DataFormatter dataFormatter = new DataFormatter();
 
     public CrmService(
@@ -97,7 +107,9 @@ public class CrmService {
             PipelineStageRepository pipelineStageRepository,
             PipelineStageTransitionRepository pipelineStageTransitionRepository,
             DealStageHistoryRepository dealStageHistoryRepository,
-            ProductCatalogRepository productCatalogRepository
+            ProductCatalogRepository productCatalogRepository,
+            AccountRepository accountRepository,
+            ContactRepository contactRepository
     ) {
         this.dealRepository = dealRepository;
         this.warrantyItemRepository = warrantyItemRepository;
@@ -105,6 +117,8 @@ public class CrmService {
         this.pipelineStageTransitionRepository = pipelineStageTransitionRepository;
         this.dealStageHistoryRepository = dealStageHistoryRepository;
         this.productCatalogRepository = productCatalogRepository;
+        this.accountRepository = accountRepository;
+        this.contactRepository = contactRepository;
         ensureDefaultStages();
         ensureDefaultProducts();
     }
@@ -367,6 +381,137 @@ public class CrmService {
     private ProductCatalogItem requireProduct(String productId) {
         return productCatalogRepository.findById(productId)
                 .orElseThrow(() -> new IllegalArgumentException("Product not found: " + productId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<AccountResponse> getAccounts(String search) {
+        String query = search == null ? "" : search.trim().toLowerCase(Locale.ENGLISH);
+        List<Account> accounts = accountRepository.findAllByActiveTrueOrderByNameAsc();
+        if (query.isBlank()) {
+            return accounts.stream().map(this::toAccountResponse).toList();
+        }
+
+        return accounts.stream()
+                .filter(account -> account.getName().toLowerCase(Locale.ENGLISH).contains(query)
+                        || (account.getIndustry() != null && account.getIndustry().toLowerCase(Locale.ENGLISH).contains(query))
+                        || (account.getAccountManager() != null && account.getAccountManager().toLowerCase(Locale.ENGLISH).contains(query)))
+                .map(this::toAccountResponse)
+                .toList();
+    }
+
+    @Transactional
+    public AccountResponse createAccount(AccountRequest request) {
+        Account account = new Account();
+        account.setId("ACC-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ENGLISH));
+        populateAccount(account, request);
+
+        return toAccountResponse(accountRepository.save(account));
+    }
+
+    @Transactional
+    public AccountResponse updateAccount(String accountId, AccountRequest request) {
+        Account account = requireAccount(accountId);
+        populateAccount(account, request);
+
+        return toAccountResponse(accountRepository.save(account));
+    }
+
+    @Transactional
+    public void deactivateAccount(String accountId) {
+        Account account = requireAccount(accountId);
+        account.setActive(false);
+        accountRepository.save(account);
+    }
+
+    private void populateAccount(Account account, AccountRequest request) {
+        account.setName(requireText(request.getName(), "Account name"));
+        account.setIndustry(trimToEmpty(request.getIndustry()));
+        account.setWebsite(trimToEmpty(request.getWebsite()));
+        account.setPhone(trimToEmpty(request.getPhone()));
+        account.setAddress(trimToEmpty(request.getAddress()));
+        account.setAccountManager(trimToEmpty(request.getAccountManager()));
+    }
+
+    private Account requireAccount(String accountId) {
+        return accountRepository.findById(accountId)
+                .orElseThrow(() -> new IllegalArgumentException("Account not found: " + accountId));
+    }
+
+    private AccountResponse toAccountResponse(Account account) {
+        return new AccountResponse(
+                account.getId(),
+                account.getName(),
+                account.getIndustry(),
+                account.getWebsite(),
+                account.getPhone(),
+                account.getAddress(),
+                account.getAccountManager()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<ContactResponse> getContacts(String search, String accountName) {
+        String query = search == null ? "" : search.trim().toLowerCase(Locale.ENGLISH);
+        String accountFilter = accountName == null ? "" : accountName.trim().toLowerCase(Locale.ENGLISH);
+        List<Contact> contacts = contactRepository.findAllByActiveTrueOrderByNameAsc();
+
+        return contacts.stream()
+                .filter(contact -> accountFilter.isBlank()
+                        || (contact.getAccountName() != null && contact.getAccountName().toLowerCase(Locale.ENGLISH).equals(accountFilter)))
+                .filter(contact -> query.isBlank()
+                        || contact.getName().toLowerCase(Locale.ENGLISH).contains(query)
+                        || (contact.getEmail() != null && contact.getEmail().toLowerCase(Locale.ENGLISH).contains(query))
+                        || (contact.getAccountName() != null && contact.getAccountName().toLowerCase(Locale.ENGLISH).contains(query)))
+                .map(this::toContactResponse)
+                .toList();
+    }
+
+    @Transactional
+    public ContactResponse createContact(ContactRequest request) {
+        Contact contact = new Contact();
+        contact.setId("CON-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ENGLISH));
+        populateContact(contact, request);
+
+        return toContactResponse(contactRepository.save(contact));
+    }
+
+    @Transactional
+    public ContactResponse updateContact(String contactId, ContactRequest request) {
+        Contact contact = requireContact(contactId);
+        populateContact(contact, request);
+
+        return toContactResponse(contactRepository.save(contact));
+    }
+
+    @Transactional
+    public void deactivateContact(String contactId) {
+        Contact contact = requireContact(contactId);
+        contact.setActive(false);
+        contactRepository.save(contact);
+    }
+
+    private void populateContact(Contact contact, ContactRequest request) {
+        contact.setName(requireText(request.getName(), "Contact name"));
+        contact.setEmail(trimToEmpty(request.getEmail()));
+        contact.setPhone(trimToEmpty(request.getPhone()));
+        contact.setTitle(trimToEmpty(request.getTitle()));
+        contact.setAccountName(trimToEmpty(request.getAccountName()));
+    }
+
+    private Contact requireContact(String contactId) {
+        return contactRepository.findById(contactId)
+                .orElseThrow(() -> new IllegalArgumentException("Contact not found: " + contactId));
+    }
+
+    private ContactResponse toContactResponse(Contact contact) {
+        return new ContactResponse(
+                contact.getId(),
+                contact.getName(),
+                contact.getEmail(),
+                contact.getPhone(),
+                contact.getTitle(),
+                contact.getAccountName()
+        );
     }
 
     @Transactional
