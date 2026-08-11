@@ -5,7 +5,11 @@ import com.acs.crm.model.TrendPoint;
 import com.acs.crm.model.WarrantyItem;
 import com.acs.crm.service.CrmService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -65,6 +69,21 @@ public class CrmController {
             @RequestParam(defaultValue = "suspect") String defaultStage
     ) {
         return crmService.importDeals(file, defaultStage);
+    }
+
+    @GetMapping("/deals/import-excel/template")
+    @PreAuthorize("hasAuthority('feature.b2b.deals.manage')")
+    public ResponseEntity<Resource> downloadImportTemplate() {
+        Resource workbook = new ClassPathResource("SWD-Prospects-Formatted-Updated.xlsx");
+        return ResponseEntity.ok()
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=CRM-Deals-Import-Sample.xlsx"
+                )
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ))
+                .body(workbook);
     }
 
     @GetMapping("/pipeline/stages")

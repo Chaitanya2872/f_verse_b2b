@@ -1,5 +1,6 @@
 package com.acs.crm.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -43,6 +44,18 @@ class CrmControllerPermissionTest {
         controller.createDeal(request);
 
         verify(crmService).createDeal(request);
+    }
+
+    @Test
+    @WithMockUser(authorities = "feature.b2b.deals.manage")
+    void dealManagementPermissionCanDownloadImportTemplate() throws Exception {
+        var response = controller.downloadImportTemplate();
+
+        assertThat(response.getHeaders().getFirst("Content-Disposition"))
+                .isEqualTo("attachment; filename=CRM-Deals-Import-Sample.xlsx");
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().exists()).isTrue();
+        assertThat(response.getBody().contentLength()).isGreaterThan(0);
     }
 
     @Configuration
