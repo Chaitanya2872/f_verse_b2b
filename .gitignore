@@ -1,0 +1,8 @@
+target/
+.gradle/
+gradle/
+data/
+.idea/
+bootrun-8097.log
+bootrun.log
+build/
