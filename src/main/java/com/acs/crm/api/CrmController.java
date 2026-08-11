@@ -7,6 +7,7 @@ import com.acs.crm.service.CrmService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -115,8 +116,25 @@ public class CrmController {
 
     @PatchMapping("/deals/{dealId}/approvals")
     @PreAuthorize("hasAuthority('feature.b2b.approvals.review')")
-    public DealResponse updateApproval(@PathVariable String dealId, @RequestBody UpdateApprovalRequest request) {
-        return crmService.updateApproval(dealId, request.getRole(), normalizeStatus(request.getStatus()));
+    public DealResponse updateApproval(
+            @PathVariable String dealId,
+            @RequestBody UpdateApprovalRequest request,
+            Authentication authentication
+    ) {
+        com.acs.crm.security.JwtService.IdentityPrincipal principal =
+                (com.acs.crm.security.JwtService.IdentityPrincipal) authentication.getPrincipal();
+        CrmService.ApprovalActor actor = new CrmService.ApprovalActor(
+                principal.userId(),
+                principal.name(),
+                principal.email(),
+                authentication.getAuthorities().stream().map(Object::toString).collect(java.util.stream.Collectors.toSet())
+        );
+        return crmService.updateApproval(
+                dealId,
+                request.getRole(),
+                normalizeStatus(request.getStatus()),
+                actor
+        );
     }
 
     @PatchMapping("/deals/{dealId}/stage")

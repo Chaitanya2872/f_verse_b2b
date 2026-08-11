@@ -154,7 +154,26 @@ public class CrmService {
     }
 
     @Transactional
-    public DealResponse updateApproval(String dealId, Enums.ApprovalRole role, Enums.ApprovalStatus status) {
+    public DealResponse updateApproval(
+            String dealId,
+            Enums.ApprovalRole role,
+            Enums.ApprovalStatus status,
+            ApprovalActor actor
+    ) {
+        if (role == null || role == Enums.ApprovalRole.Solution) {
+            throw new IllegalArgumentException("Approval role must be RSM, Finance, or Business Head");
+        }
+        String requiredAuthority = switch (role) {
+            case RSM -> "feature.b2b.approvals.rsm";
+            case Finance -> "feature.b2b.approvals.finance";
+            case BusinessHead -> "feature.b2b.approvals.business-head";
+            case Solution -> throw new IllegalArgumentException("Solution is a requirement, not an approval role");
+        };
+        if (actor == null || !actor.authorities().contains(requiredAuthority)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Missing identity permission: " + requiredAuthority
+            );
+        }
         Deal deal = dealRepository.findById(dealId)
                 .orElseThrow(() -> new IllegalArgumentException("Deal not found"));
 
@@ -173,9 +192,9 @@ public class CrmService {
         for (int i = stepIndex; i < deal.getApprovals().size(); i++) {
             ApprovalStep step = deal.getApprovals().get(i);
             if (i == stepIndex) {
-                step.setStatus(status);
+                applyApprovalDecision(step, status, actor);
             } else if (status == Enums.ApprovalStatus.rejected) {
-                step.setStatus(Enums.ApprovalStatus.rejected);
+                applyApprovalDecision(step, Enums.ApprovalStatus.rejected, actor);
             }
         }
 
@@ -184,10 +203,42 @@ public class CrmService {
         return toDealResponse(dealRepository.save(deal));
     }
 
+    private void applyApprovalDecision(
+            ApprovalStep step,
+            Enums.ApprovalStatus status,
+            ApprovalActor actor
+    ) {
+        step.setStatus(status);
+        if (status == Enums.ApprovalStatus.pending) {
+            step.setActedByUserId(null);
+            step.setActedByName(null);
+            step.setActedByEmail(null);
+            step.setActedAt(null);
+            return;
+        }
+        step.setActedByUserId(actor.userId());
+        step.setActedByName(actor.name());
+        step.setActedByEmail(actor.email());
+        step.setActedAt(Instant.now().toString());
+    }
+
+    public record ApprovalActor(
+            String userId,
+            String name,
+            String email,
+            Set<String> authorities
+    ) {
+        public ApprovalActor {
+            authorities = authorities == null ? Set.of() : Set.copyOf(authorities);
+        }
+    }
+
     @Transactional(readOnly = true)
     public List<DealResponse> getPendingApprovals() {
         return dealRepository.findAll().stream()
-                .filter(deal -> deal.getApprovals().stream().anyMatch(step -> step.getStatus() == Enums.ApprovalStatus.pending))
+                .filter(deal -> deal.getApprovals().stream().anyMatch(step ->
+                        step.getRole() != Enums.ApprovalRole.Solution
+                                && step.getStatus() == Enums.ApprovalStatus.pending))
                 .sorted(Comparator.comparing(Deal::getUpdatedAt).reversed())
                 .map(this::toDealResponse)
                 .toList();
@@ -456,7 +507,6 @@ public class CrmService {
     private List<ApprovalStep> defaultApprovals(String stageId) {
         if ("quotation".equals(stageId)) {
             return List.of(
-                    new ApprovalStep(Enums.ApprovalRole.Solution, Enums.ApprovalStatus.pending),
                     new ApprovalStep(Enums.ApprovalRole.RSM, Enums.ApprovalStatus.pending),
                     new ApprovalStep(Enums.ApprovalRole.Finance, Enums.ApprovalStatus.pending),
                     new ApprovalStep(Enums.ApprovalRole.BusinessHead, Enums.ApprovalStatus.pending)
@@ -702,7 +752,7 @@ public class CrmService {
                 stage("prospect", "Prospect", "Prospect", 2, 20, "#38bdf8", 14, List.of("company", "product", "accountManager"), List.of()),
                 stage("qualified", "Qualified", "Qualified", 3, 30, "#0ea5e9", 10, List.of("company", "product", "accountManager"), List.of()),
                 stage("solutioning", "Solutioning", "Solve", 4, 40, "#6366f1", 12, List.of("company", "product"), List.of("Solution")),
-                stage("quotation", "Quotation", "Quote", 5, 55, "#8b5cf6", 14, List.of("company", "product", "value"), List.of("Solution", "RSM")),
+                stage("quotation", "Quotation", "Quote", 5, 55, "#8b5cf6", 14, List.of("company", "product", "value"), List.of("RSM")),
                 stage("negotiation", "Negotiation", "Negotiate", 6, 65, "#f59e0b", 14, List.of("company", "value"), List.of()),
                 stage("order_placed", "Order Placed", "Order", 7, 80, "#f97316", 10, List.of("company", "value"), List.of("Finance")),
                 stage("procurement_fulfilment", "Procurement/Fulfilment", "Fulfil", 8, 90, "#06b6d4", 20, List.of(), List.of()),
@@ -916,7 +966,9 @@ public class CrmService {
                 deal.getStage().getProbabilityPercent(),
                 calculateWeightedValue(deal),
                 calculateDaysInStage(deal),
-                deal.getApprovals(),
+                deal.getApprovals().stream()
+                        .filter(step -> step.getRole() != Enums.ApprovalRole.Solution)
+                        .toList(),
                 deal.getExtraFields()
         );
     }

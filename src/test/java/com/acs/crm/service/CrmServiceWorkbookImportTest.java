@@ -97,6 +97,19 @@ class CrmServiceWorkbookImportTest {
             assertThat(goa.getExtraFields())
                 .containsEntry("reference", "Cdr (Retd) Bandari")
                 .containsEntry("remarks", "Demo scheduled in week of 24 Aug");
+
+            Deal dlrl = imported.stream()
+                .filter(deal -> "DLRL".equals(deal.getCompany()))
+                .findFirst()
+                .orElseThrow();
+            assertThat(dlrl.getStage().getId()).isEqualTo("quotation");
+            assertThat(dlrl.getApprovals())
+                .extracting(step -> step.getRole())
+                .containsExactly(
+                    Enums.ApprovalRole.RSM,
+                    Enums.ApprovalRole.Finance,
+                    Enums.ApprovalRole.BusinessHead
+                );
         }
     }
 }

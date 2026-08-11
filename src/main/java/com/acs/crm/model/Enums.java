@@ -33,6 +33,7 @@ public final class Enums {
     }
 
     public enum ApprovalRole {
+        /** Legacy persistence value only; rejected by approval APIs and omitted from responses. */
         Solution,
         RSM,
         Finance,

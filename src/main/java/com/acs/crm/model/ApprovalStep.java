@@ -12,6 +12,10 @@ public class ApprovalStep {
     private ApprovalRole role;
     @Enumerated(EnumType.STRING)
     private ApprovalStatus status;
+    private String actedByUserId;
+    private String actedByName;
+    private String actedByEmail;
+    private String actedAt;
 
     public ApprovalStep() {
     }
@@ -35,5 +39,37 @@ public class ApprovalStep {
 
     public void setStatus(ApprovalStatus status) {
         this.status = status;
+    }
+
+    public String getActedByUserId() {
+        return actedByUserId;
+    }
+
+    public void setActedByUserId(String actedByUserId) {
+        this.actedByUserId = actedByUserId;
+    }
+
+    public String getActedByName() {
+        return actedByName;
+    }
+
+    public void setActedByName(String actedByName) {
+        this.actedByName = actedByName;
+    }
+
+    public String getActedByEmail() {
+        return actedByEmail;
+    }
+
+    public void setActedByEmail(String actedByEmail) {
+        this.actedByEmail = actedByEmail;
+    }
+
+    public String getActedAt() {
+        return actedAt;
+    }
+
+    public void setActedAt(String actedAt) {
+        this.actedAt = actedAt;
     }
 }
