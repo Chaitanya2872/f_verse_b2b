@@ -6,11 +6,15 @@ import com.acs.crm.api.ActivityItem;
 import com.acs.crm.api.AllowedStageTransitionResponse;
 import com.acs.crm.api.ContactRequest;
 import com.acs.crm.api.ContactResponse;
+import com.acs.crm.api.ConvertLeadRequest;
+import com.acs.crm.api.ConvertLeadResponse;
 import com.acs.crm.api.CreateDealRequest;
 import com.acs.crm.api.DashboardSummary;
 import com.acs.crm.api.DealResponse;
 import com.acs.crm.api.DealStageHistoryResponse;
 import com.acs.crm.api.ImportDealsResponse;
+import com.acs.crm.api.LeadRequest;
+import com.acs.crm.api.LeadResponse;
 import com.acs.crm.api.PersonResponse;
 import com.acs.crm.api.PipelineStageResponse;
 import com.acs.crm.api.PipelineStageUpdateRequest;
@@ -25,6 +29,7 @@ import com.acs.crm.model.Contact;
 import com.acs.crm.model.Deal;
 import com.acs.crm.model.DealStageHistory;
 import com.acs.crm.model.Enums;
+import com.acs.crm.model.Lead;
 import com.acs.crm.model.Person;
 import com.acs.crm.model.PipelineStage;
 import com.acs.crm.model.PipelineStageTransition;
@@ -35,6 +40,7 @@ import com.acs.crm.repository.AccountRepository;
 import com.acs.crm.repository.ContactRepository;
 import com.acs.crm.repository.DealStageHistoryRepository;
 import com.acs.crm.repository.DealRepository;
+import com.acs.crm.repository.LeadRepository;
 import com.acs.crm.repository.PipelineStageRepository;
 import com.acs.crm.repository.PipelineStageTransitionRepository;
 import com.acs.crm.repository.ProductCatalogRepository;
@@ -72,7 +78,7 @@ public class CrmService {
             "company", Set.of("company", "customer", "account", "client", "organization", "prospect"),
             "contact", Set.of("contact", "contact person", "customer contact", "contact name"),
             "product", Set.of("product", "requirement", "item", "solution", "opportunity"),
-            "accountManager", Set.of("account manager", "owner", "salesperson", "sales person", "manager"),
+            "accountManager", Set.of("account manager", "owner", "salesperson", "sales person", "manager", "reference"),
             "stage", Set.of("stage", "pipeline stage", "sales stage", "current stage"),
             "value", Set.of("value", "amount", "deal value", "opportunity value", "value (₹ lakhs)", "value (lakhs)"),
             "priority", Set.of("priority", "deal priority", "probability"),
@@ -99,6 +105,7 @@ public class CrmService {
     private final ProductCatalogRepository productCatalogRepository;
     private final AccountRepository accountRepository;
     private final ContactRepository contactRepository;
+    private final LeadRepository leadRepository;
     private final DataFormatter dataFormatter = new DataFormatter();
 
     public CrmService(
@@ -109,7 +116,8 @@ public class CrmService {
             DealStageHistoryRepository dealStageHistoryRepository,
             ProductCatalogRepository productCatalogRepository,
             AccountRepository accountRepository,
-            ContactRepository contactRepository
+            ContactRepository contactRepository,
+            LeadRepository leadRepository
     ) {
         this.dealRepository = dealRepository;
         this.warrantyItemRepository = warrantyItemRepository;
@@ -119,6 +127,7 @@ public class CrmService {
         this.productCatalogRepository = productCatalogRepository;
         this.accountRepository = accountRepository;
         this.contactRepository = contactRepository;
+        this.leadRepository = leadRepository;
         ensureDefaultStages();
         ensureDefaultProducts();
     }
@@ -1115,6 +1124,190 @@ public class CrmService {
                         .filter(step -> step.getRole() != Enums.ApprovalRole.Solution)
                         .toList(),
                 deal.getExtraFields()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<LeadResponse> getLeads(String search, String status) {
+        String query = search == null ? "" : search.trim().toLowerCase(Locale.ENGLISH);
+        String statusFilter = status == null ? "" : status.trim().toLowerCase(Locale.ENGLISH);
+        List<Lead> leads = leadRepository.findAllByActiveTrueOrderByUpdatedAtDesc();
+
+        return leads.stream()
+                .filter(lead -> statusFilter.isBlank() || lead.getStatus().name().equalsIgnoreCase(statusFilter))
+                .filter(lead -> query.isBlank()
+                        || lead.getCompany().toLowerCase(Locale.ENGLISH).contains(query)
+                        || (lead.getContactName() != null && lead.getContactName().toLowerCase(Locale.ENGLISH).contains(query))
+                        || (lead.getOwner() != null && lead.getOwner().toLowerCase(Locale.ENGLISH).contains(query)))
+                .map(this::toLeadResponse)
+                .toList();
+    }
+
+    @Transactional
+    public LeadResponse createLead(LeadRequest request) {
+        Lead lead = new Lead();
+        lead.setId("LEAD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ENGLISH));
+        populateLead(lead, request);
+        lead.setCreatedAt(Instant.now().toString());
+        lead.setUpdatedAt(lead.getCreatedAt());
+
+        return toLeadResponse(leadRepository.save(lead));
+    }
+
+    @Transactional
+    public LeadResponse updateLead(String leadId, LeadRequest request) {
+        Lead lead = requireLead(leadId);
+        populateLead(lead, request);
+        lead.setUpdatedAt(Instant.now().toString());
+
+        return toLeadResponse(leadRepository.save(lead));
+    }
+
+    @Transactional
+    public void deactivateLead(String leadId) {
+        Lead lead = requireLead(leadId);
+        lead.setActive(false);
+        leadRepository.save(lead);
+    }
+
+    @Transactional
+    public ConvertLeadResponse convertLead(String leadId, ConvertLeadRequest request) {
+        Lead lead = requireLead(leadId);
+        if (lead.getStatus() == Enums.LeadStatus.converted) {
+            throw new IllegalStateException("Lead is already converted");
+        }
+
+        String accountName = requireText(request.getAccountName(), "Account name");
+        Account account = accountRepository.findAllByActiveTrueOrderByNameAsc().stream()
+                .filter(existing -> existing.getName().equalsIgnoreCase(accountName))
+                .findFirst()
+                .orElseGet(() -> {
+                    Account created = new Account();
+                    created.setId("ACC-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ENGLISH));
+                    created.setName(accountName);
+                    created.setIndustry("");
+                    created.setWebsite("");
+                    created.setPhone(trimToEmpty(lead.getPhone()));
+                    created.setAddress("");
+                    created.setAccountManager(trimToEmpty(lead.getOwner()));
+                    return accountRepository.save(created);
+                });
+
+        String contactName = firstNonBlank(request.getContactName(), lead.getContactName());
+        Contact contact = null;
+        if (!contactName.isBlank()) {
+            String finalContactName = contactName;
+            contact = contactRepository.findAllByActiveTrueOrderByNameAsc().stream()
+                    .filter(existing -> existing.getName().equalsIgnoreCase(finalContactName)
+                            && accountName.equalsIgnoreCase(trimToEmpty(existing.getAccountName())))
+                    .findFirst()
+                    .orElseGet(() -> {
+                        Contact created = new Contact();
+                        created.setId("CON-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ENGLISH));
+                        created.setName(finalContactName);
+                        created.setEmail(firstNonBlank(request.getContactEmail(), lead.getEmail()));
+                        created.setPhone(firstNonBlank(request.getContactPhone(), lead.getPhone()));
+                        created.setTitle("");
+                        created.setAccountName(accountName);
+                        return contactRepository.save(created);
+                    });
+        }
+
+        String dealId = null;
+        if (request.isCreateOpportunity()) {
+            String product = requireText(request.getProduct(), "Product");
+            PipelineStage stage = request.getStageId() != null && !request.getStageId().isBlank()
+                    ? requireStage(request.getStageId())
+                    : pipelineStageRepository.findAllByActiveTrueOrderByDisplayOrderAsc().stream()
+                            .findFirst()
+                            .orElseThrow(() -> new IllegalStateException("No pipeline stages configured"));
+
+            Deal deal = new Deal();
+            deal.setId("D-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ENGLISH));
+            deal.setCompany(lead.getCompany());
+            deal.setContact(contactName.isBlank() ? "Unknown contact" : contactName);
+            deal.setProduct(product);
+            String ownerName = firstNonBlank(lead.getOwner(), "Imported User");
+            deal.setAccountManager(new Person(ownerName, initialsFromName(ownerName)));
+            deal.setStage(stage);
+            deal.setValue(Math.max(0, request.getValue()));
+            deal.setPriority(Enums.Priority.medium);
+            deal.setUpdatedAt(Instant.now().toString());
+            deal.setExpectedClosureDate("");
+            deal.setNextActivity("");
+            deal.setNextActivityDueDate("");
+            deal.setOemVendor("");
+            deal.setApprovals(defaultApprovals(stage.getId()));
+            deal.setExtraFields(new LinkedHashMap<>());
+            deal.setRiskStatus(calculateRiskStatus(deal));
+            dealRepository.save(deal);
+            dealId = deal.getId();
+        }
+
+        lead.setStatus(Enums.LeadStatus.converted);
+        lead.setConvertedAccountId(account.getId());
+        lead.setConvertedContactId(contact != null ? contact.getId() : null);
+        lead.setConvertedDealId(dealId);
+        lead.setUpdatedAt(Instant.now().toString());
+        leadRepository.save(lead);
+
+        return new ConvertLeadResponse(
+                lead.getId(),
+                account.getId(),
+                account.getName(),
+                contact != null ? contact.getId() : null,
+                contact != null ? contact.getName() : null,
+                dealId
+        );
+    }
+
+    private void populateLead(Lead lead, LeadRequest request) {
+        lead.setCompany(requireText(request.getCompany(), "Company"));
+        lead.setContactName(trimToEmpty(request.getContactName()));
+        lead.setEmail(trimToEmpty(request.getEmail()));
+        lead.setPhone(trimToEmpty(request.getPhone()));
+        lead.setSource(trimToEmpty(request.getSource()));
+        lead.setOwner(trimToEmpty(request.getOwner()));
+        lead.setScore(Math.max(0, Math.min(100, request.getScore())));
+        lead.setNotes(trimToEmpty(request.getNotes()));
+
+        Enums.LeadStatus requestedStatus = request.getStatus();
+        if (requestedStatus == Enums.LeadStatus.converted && lead.getStatus() != Enums.LeadStatus.converted) {
+            throw new IllegalArgumentException("Use the convert endpoint to mark a lead as converted");
+        }
+        lead.setStatus(requestedStatus == null ? Enums.LeadStatus.new_lead : requestedStatus);
+    }
+
+    private String firstNonBlank(String primary, String fallback) {
+        String trimmedPrimary = trimToEmpty(primary);
+        if (!trimmedPrimary.isBlank()) {
+            return trimmedPrimary;
+        }
+        return trimToEmpty(fallback);
+    }
+
+    private Lead requireLead(String leadId) {
+        return leadRepository.findById(leadId)
+                .orElseThrow(() -> new IllegalArgumentException("Lead not found: " + leadId));
+    }
+
+    private LeadResponse toLeadResponse(Lead lead) {
+        return new LeadResponse(
+                lead.getId(),
+                lead.getCompany(),
+                lead.getContactName(),
+                lead.getEmail(),
+                lead.getPhone(),
+                lead.getSource(),
+                lead.getOwner(),
+                lead.getStatus(),
+                lead.getScore(),
+                lead.getNotes(),
+                lead.getCreatedAt(),
+                lead.getUpdatedAt(),
+                lead.getConvertedAccountId(),
+                lead.getConvertedContactId(),
+                lead.getConvertedDealId()
         );
     }
 }

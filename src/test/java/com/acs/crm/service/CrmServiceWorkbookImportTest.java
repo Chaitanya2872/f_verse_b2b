@@ -13,6 +13,7 @@ import com.acs.crm.repository.AccountRepository;
 import com.acs.crm.repository.ContactRepository;
 import com.acs.crm.repository.DealRepository;
 import com.acs.crm.repository.DealStageHistoryRepository;
+import com.acs.crm.repository.LeadRepository;
 import com.acs.crm.repository.PipelineStageRepository;
 import com.acs.crm.repository.PipelineStageTransitionRepository;
 import com.acs.crm.repository.ProductCatalogRepository;
@@ -39,6 +40,7 @@ class CrmServiceWorkbookImportTest {
     @Mock private ProductCatalogRepository productCatalogRepository;
     @Mock private AccountRepository accountRepository;
     @Mock private ContactRepository contactRepository;
+    @Mock private LeadRepository leadRepository;
 
     private CrmService crmService;
 
@@ -62,7 +64,8 @@ class CrmServiceWorkbookImportTest {
             dealStageHistoryRepository,
             productCatalogRepository,
             accountRepository,
-            contactRepository
+            contactRepository,
+            leadRepository
         );
     }
 
@@ -85,7 +88,7 @@ class CrmServiceWorkbookImportTest {
             assertThat(response.detectedHeaders()).contains(
                 "prospect", "solution", "current stage", "value (₹ lakhs)", "est. closure"
             );
-            assertThat(response.dynamicHeaders()).containsExactly("s. no.", "reference", "remarks");
+            assertThat(response.dynamicHeaders()).containsExactly("s. no.", "remarks");
 
             ArgumentCaptor<List> captor = ArgumentCaptor.forClass(List.class);
             verify(dealRepository).saveAll(captor.capture());
@@ -100,8 +103,9 @@ class CrmServiceWorkbookImportTest {
             assertThat(goa.getValue()).isEqualTo(10_000_000L);
             assertThat(goa.getPriority()).isEqualTo(Enums.Priority.high);
             assertThat(goa.getExpectedClosureDate()).isEqualTo("2026-11-30");
+            assertThat(goa.getAccountManager().getName()).isEqualTo("Cdr (Retd) Bandari");
             assertThat(goa.getExtraFields())
-                .containsEntry("reference", "Cdr (Retd) Bandari")
+                .doesNotContainKey("reference")
                 .containsEntry("remarks", "Demo scheduled in week of 24 Aug");
 
             Deal dlrl = imported.stream()

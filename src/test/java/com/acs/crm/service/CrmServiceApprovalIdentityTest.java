@@ -14,6 +14,7 @@ import com.acs.crm.repository.AccountRepository;
 import com.acs.crm.repository.ContactRepository;
 import com.acs.crm.repository.DealRepository;
 import com.acs.crm.repository.DealStageHistoryRepository;
+import com.acs.crm.repository.LeadRepository;
 import com.acs.crm.repository.PipelineStageRepository;
 import com.acs.crm.repository.PipelineStageTransitionRepository;
 import com.acs.crm.repository.ProductCatalogRepository;
@@ -40,6 +41,7 @@ class CrmServiceApprovalIdentityTest {
     @Mock private ProductCatalogRepository productCatalogRepository;
     @Mock private AccountRepository accountRepository;
     @Mock private ContactRepository contactRepository;
+    @Mock private LeadRepository leadRepository;
 
     private CrmService crmService;
 
@@ -55,7 +57,8 @@ class CrmServiceApprovalIdentityTest {
             dealStageHistoryRepository,
             productCatalogRepository,
             accountRepository,
-            contactRepository
+            contactRepository,
+            leadRepository
         );
     }
 

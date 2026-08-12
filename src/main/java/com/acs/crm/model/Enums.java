@@ -58,4 +58,13 @@ public final class Enums {
         due,
         none
     }
+
+    public enum LeadStatus {
+        new_lead,
+        contacted,
+        qualified,
+        unqualified,
+        converted,
+        lost
+    }
 }

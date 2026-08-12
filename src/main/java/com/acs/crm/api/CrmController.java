@@ -188,6 +188,41 @@ public class CrmController {
         crmService.deactivateContact(contactId);
     }
 
+    @GetMapping("/leads")
+    @PreAuthorize("hasAuthority('page.b2b')")
+    public List<LeadResponse> leads(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status
+    ) {
+        return crmService.getLeads(search, status);
+    }
+
+    @PostMapping("/leads")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAuthority('feature.b2b.leads.manage')")
+    public LeadResponse createLead(@RequestBody LeadRequest request) {
+        return crmService.createLead(request);
+    }
+
+    @PutMapping("/leads/{leadId}")
+    @PreAuthorize("hasAuthority('feature.b2b.leads.manage')")
+    public LeadResponse updateLead(@PathVariable String leadId, @RequestBody LeadRequest request) {
+        return crmService.updateLead(leadId, request);
+    }
+
+    @DeleteMapping("/leads/{leadId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('feature.b2b.leads.manage')")
+    public void deleteLead(@PathVariable String leadId) {
+        crmService.deactivateLead(leadId);
+    }
+
+    @PostMapping("/leads/{leadId}/convert")
+    @PreAuthorize("hasAuthority('feature.b2b.leads.manage')")
+    public ConvertLeadResponse convertLead(@PathVariable String leadId, @RequestBody ConvertLeadRequest request) {
+        return crmService.convertLead(leadId, request);
+    }
+
     @PatchMapping("/deals/{dealId}/approvals")
     @PreAuthorize("hasAuthority('feature.b2b.approvals.review')")
     public DealResponse updateApproval(
